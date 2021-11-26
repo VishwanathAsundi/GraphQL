@@ -1,6 +1,8 @@
 const User = require("../models/user");
+const Post = require("../models/post");
 const bcrypt = require("bcryptjs");
 const validator = require("validator");
+const jwt = require("jsonwebtoken");
 
 module.exports = {
   createUser: async function({ userInput }, req) {
@@ -39,7 +41,102 @@ module.exports = {
     const userCreated = await user.save();
     return { ...userCreated._doc, _id: userCreated._id };
   },
-  hello() {
-    return "Hello World";
+  login: async function({ email, password }) {
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      const error = new Error("User not found");
+      error.code = 401;
+      throw error;
+    }
+    const isEqual = await bcrypt.compare(password, user.password);
+    if (!isEqual) {
+      const error = new Error("Incorrect password");
+      error.code = 401;
+      throw error;
+    }
+    let token = jwt.sign(
+      {
+        email: email,
+        userId: user._id.toString()
+      },
+      "secretkey",
+      { expiresIn: "1h" }
+    );
+    return { token: token, userId: user._id.toString() };
+  },
+  createPost: async function({ postInput }, req) {
+    if (!req.isAuth) {
+      const error = new Error("User is not authenticated");
+      error.code = 401;
+      throw error;
+    }
+    const { title, content, imageUrl } = postInput;
+    const errors = [];
+    if (validator.isEmpty(title) || !validator.isLength(title, { min: 5 })) {
+      errors.push("title is invalid");
+    }
+    if (
+      validator.isEmpty(content) ||
+      !validator.isLength(content, { min: 5 })
+    ) {
+      errors.push("Content is invalid");
+    }
+    if (
+      validator.isEmpty(imageUrl) ||
+      !validator.isLength(imageUrl, { min: 5 })
+    ) {
+      errors.push("imageUrl is invalid");
+    }
+    if (errors.length > 0) {
+      const error = new Error("Invalid input");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+    const user = await User.findById(req.userId);
+    if (!user) {
+      const error = new Error("Invalid user");
+      error.code = 401;
+      throw error;
+    }
+    let post = new Post({
+      title,
+      content,
+      imageUrl,
+      creator: user
+    });
+    let postCreated = await post.save();
+    user.posts.push(post);
+    await user.save();
+    return {
+      ...postCreated._doc,
+      _id: postCreated._id.toString(),
+      updatedAt: postCreated.updatedAt.toISOString(),
+      createdAt: postCreated.createdAt.toISOString()
+    };
+  },
+  posts: async function(args, req) {
+    if (!req.isAuth) {
+      const error = new Error("User is not authenticated");
+      error.code = 401;
+      throw error;
+    }
+    let totalPosts = await Post.find().countDocuments();
+    let posts = await Post.find()
+      .limit()
+      .skip();
+    return {
+      posts: [
+        ...posts.map(post => {
+          return {
+            ...post._doc,
+            _id: post._id.toString(),
+            createdAt: post.createdAt.toISOString(),
+            updatedAt: post.updatedAt.toISOString()
+          };
+        })
+      ],
+      totalPosts: totalPosts
+    };
   }
 };
