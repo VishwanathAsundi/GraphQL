@@ -35,14 +35,21 @@ type UserData{
     token:String!
     userId:ID!
 }
+type DeletePostData{
+    isDeleted:Boolean!
+}
 type RootMutation{
     createUser(userInput:userInputData):User!
     createPost(postInput:postInputData):Post!
+    updatePost(postId:ID!,postInput:postInputData):Post!
+    deletePost(postId:ID!):DeletePostData!
+    updateStatus(status:String!):User!
 }
 type RootQuery{
     login(email:String!,password:String!):UserData!
     posts(page:Int!):PostData!
     post(postId:String!):Post!
+    user:User!
 }
 schema{
     query: RootQuery
